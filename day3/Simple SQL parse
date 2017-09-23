@@ -1,0 +1,282 @@
+#-*- coding:utf-8 -*-
+#SQL解析
+import os
+
+def sql_parse(sql):
+    '''
+    切分SQL字符串，提取其中命令操作，根据对应关系分发给具体的解析函数
+    :param sql:
+    :return:
+    '''
+    parse_func = {
+        'select': select_parse,
+        'insert': insert_parse,
+        'update': update_parse,
+        'delete': delete_parse,
+        # 'alter': alter,
+    }
+    sql_list = sql.split()
+    func = sql_list[0]
+    if func in parse_func:
+        res = parse_func[func](sql_list)
+    return res
+
+def where_parse(sql_list,sql_dic):
+    if 'where' in sql_list:
+        w_index = sql_list.index('where')
+        where1 = sql_list[w_index + 1:w_index + 4]
+        sql_dic['where'].append(where1)
+
+# def limit_parse(sql_list,sql_dic):
+#     if 'limit' in sql_list:
+#         l_index = sql_list.index('limit')
+#         limit1 = sql_list[l_index + 1:l_index + 4]
+#         sql_dic['limit'] = limit1
+
+def select_parse(sql_list):
+    '''
+    定义select语句的语法结构，执行SQL解析操作，返回sql_dic
+    :param sql:
+    :return:
+    '''
+    sql_dic = {
+        'func':select,
+        'select':[],
+        'from':[],
+        'where':[],
+        'limit':[],
+    }
+    return handle_parse(sql_list,sql_dic)
+
+def insert_parse(sql_list):
+    '''
+    定义insert语句的语法结构，执行SQL解析操作，返回sql_dic
+    :param sql:
+    :return:
+    '''
+    sql_dic = {
+        'func':insert,
+        'into':[],
+        'values':[],
+    }
+    return handle_parse(sql_list,sql_dic)
+
+def delete_parse(sql_list):
+    '''
+    定义delete语句的语法结构，执行SQL解析操作，返回sql_dic
+    :param sql:
+    :return:
+    '''
+    sql_dic = {
+        'func':delete,
+        'from':[],
+        'where':[],
+    }
+    return handle_parse(sql_list,sql_dic)
+
+def update_parse(sql_list):
+    '''
+    定义update语句的语法结构，执行SQL解析操作，返回sql_dic
+    :param sql:
+    :return:
+    '''
+    sql_dic = {
+        'func':update,
+        'update':[],
+        'set':[],
+        'where':[],
+    }
+    return handle_parse(sql_list,sql_dic)
+
+def handle_parse(sql_list,sql_dic):
+    '''
+    执行SQL解析操作，返回sql_dic
+    :param sql:
+    :param sql_dic:
+    :return:
+    '''
+    if sql_dic['func'] == select:
+        sql_dic['select'] = sql_list[1]
+        sql_dic['from'] = sql_list[3]
+        where_parse(sql_list,sql_dic)
+        # limit_parse(sql_list,sql_dic)
+    elif sql_dic['func'] == insert:
+        sql_dic['into'] = sql_list[2]
+        sql_dic['values'] = sql_list[-1]
+    elif sql_dic['func'] == delete:
+        sql_dic['from'] = sql_list[2]
+        where_parse(sql_list,sql_dic)
+    elif sql_dic['func'] == update:
+        sql_dic['update'] = sql_list[1]
+        sql_dic['set'] = sql_list[3]
+        where_parse(sql_list,sql_dic)
+    return sql_dic
+
+# def Detection_table(sql_dir):
+
+#sql执行
+def sql_action(sql_dic):
+    '''
+    从字典sql_dic当中提取命令，分发给具体的命令执行函数去执行
+    :param sql_dic:
+    :return:
+    '''
+    sql_dic['func'](sql_dic)
+
+def where(field_value,operator,values):
+    if operator == '=':
+        if field_value == values:
+            return True
+    elif operator == '>':
+        if int(field_value) > int(values):
+            return True
+    elif operator == '<':
+        if int(field_value) < int(values):
+            return True
+    elif operator == 'like':
+        if values in field_value:
+            return True
+
+# def limit(total_field,lines):
+#     print(total_field[0:int(lines)])
+
+def insert(sql_dic):
+    for file in os.listdir('dbdirectory'):
+        if sql_dic['into'] == file:
+            # print(sql_dic)
+            new_v = sql_dic['values'].split("(")
+            new_v = new_v[1].split(")")
+            new_v = new_v[0].split(',')
+            new_v = ' '.join(new_v).replace('\'','')
+            with open('dbdirectory\\'+file,'a+',encoding='utf-8') as i_db:
+                i_db.seek(0)
+                one_line = i_db.readline()
+                lines = i_db.readlines()
+                total_phone = []
+                for line in lines:
+                    if not line.strip('\n'):break
+                    p_index = one_line.split().index('phone')
+                    total_phone.append(line.split()[p_index])
+                if new_v.split()[2] in total_phone:
+                        print('phone 为重复值')
+                else:
+                    last_line = lines[-1]
+                    new_id = int(last_line.split()[0]) + 1
+                    new = str(new_id) + ' ' + new_v
+                    i_db.write(new + '\n')
+                    print('写入成功')
+
+def select(sql_dic):
+    for file in os.listdir('dbdirectory'):
+        if sql_dic['from'] == file:
+            count = 0
+            if sql_dic['select'] == '*':
+                if sql_dic['where']:
+                    with open('dbdirectory\\' + file, 'r', encoding='utf-8') as s_db:
+                        line_one = s_db.readline()
+                        where_i = line_one.split().index(sql_dic['where'][0][0])
+                        print(line_one,end='')
+                        for line in s_db:
+                            if where(line.split()[where_i], sql_dic['where'][0][1], sql_dic['where'][0][2]):
+                                print(line,end='')
+                                count+=1
+                        print('一共查询到%s符合要求的数据'%count)
+                else:
+                    with open('dbdirectory\\'+file,'r',encoding='utf-8') as s_db:
+                        for line in s_db:
+                            print(line,end='')
+                            count+=1
+                        print('一共查询到%s符合要求的数据'%(count-1))
+            if sql_dic['select'] != '*':
+                fields = sql_dic['select'].split(',')
+                with open('dbdirectory\\'+file,'r',encoding='utf-8') as s_db:
+                    line_one = s_db.readline()
+                    one_list = line_one.split()
+                    total_field = []
+                    if set(fields) < set(one_list):
+                        print(fields)
+                        for line in s_db:
+                            field_index = []
+                            line_list = line.split()
+                            if sql_dic['where']:
+                                for field in fields:
+                                    field_index.append(line_list[one_list.index(field)])
+                                # print(sql_dic['where'][0][0])
+                                where_i = fields.index(sql_dic['where'][0][0])
+                                if where(field_index[where_i],sql_dic['where'][0][1],sql_dic['where'][0][2]):
+                                    print(field_index)
+                                    count += 1
+                            else:
+                                for field in fields:
+                                    field_index.append(line_list[one_list.index(field)])
+                                print(field_index)
+                                count += 1
+                            total_field += field_index
+                        else:
+                            print('一共查询到%s符合要求的数据' %count)
+                        # print(total_field)
+                        if sql_dic['limit']:
+                            limit(total_field,sql_dic['limit'][0])
+    print('查询结果如上所示！')
+
+def delete(sql_dic):
+    for file in os.listdir('dbdirectory'):
+        if sql_dic['from'] == file:
+            with open('dbdirectory\\' + file,'r',encoding='utf-8') as d_db,\
+                    open('dbdirectory\\' + 'new'+file,'w',encoding='utf-8') as n_d_db:
+                lines = d_db.readlines()
+                last_lines = lines[-1]
+                d_db.seek(0)
+                if last_lines.split()[0] < sql_dic['where'][0][2]:
+                    print('删除的数据不存在')
+                    continue
+                else:
+                    for line in d_db:
+                        line_list = line.split()
+                        if where(line_list[0],sql_dic['where'][0][1],sql_dic['where'][0][2]):
+                            continue
+                        else:
+                            n_d_db.write(line)
+            os.remove('dbdirectory\\' + file)
+            os.rename('dbdirectory\\new'+file,'dbdirectory\\' + file)
+            print('删除操作完成')
+
+def update(sql_dic):
+    for file in os.listdir('dbdirectory'):
+        if sql_dic['update'] == file:
+            u_set = sql_dic['set'].split('=')
+            with open('dbdirectory\\' + file,'r',encoding='utf-8') as u_db,\
+                    open('dbdirectory\\' + 'new'+file,'w',encoding='utf-8') as n_u_db:
+                line_one = u_db.readline()
+                one_list = line_one.split()
+                # print(u_set)
+                set_i =  one_list.index(u_set[0])
+                where_i = one_list.index(sql_dic['where'][0][0])
+                u_db.seek(0)
+                for line in u_db:
+                    line_list = line.split()
+                    # print(line_list[where_i])
+                    # print(sql_dic['where'][0][1])
+                    # print(sql_dic['where'][0][2])
+                    if where(line_list[where_i], sql_dic['where'][0][1], sql_dic['where'][0][2]):
+                        line_list[set_i] = u_set[1]
+                        new_line = ' '.join(line_list).replace('\'','')
+                        n_u_db.write(new_line+'\n')
+                    else:
+                        n_u_db.write(line)
+            os.remove('dbdirectory\\' + file)
+            os.rename('dbdirectory\\new' + file, 'dbdirectory\\' + file)
+            print('修改操作完成')
+
+if __name__ == '__main__':
+    while True:
+        print('PS:时间紧，代码尚未全面优化。见谅！')
+        print('where条件判断时，判断的值暂时不支持加引号，且不能连续写，必须有空格。即where dept = 运维')
+        print("update修改时set定义的修改信息必须连续写，中间不能有空格。即set dept='运维'")
+        sql=input('SQL->').strip()
+        if sql == 'exit' : break
+        if len(sql) == 0 : continue
+        sql_dic = sql_parse(sql)
+        if not sql_dic:
+            continue
+        sql_action(sql_dic)
